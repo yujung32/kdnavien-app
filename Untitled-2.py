@@ -10,20 +10,14 @@ from PIL import Image
 
 # ReportLab
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, Image as RLImage
-)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, Image as RLImage
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# ────────────────────────────────────────────────
-# 페이지 & 스타일 설정
-# ────────────────────────────────────────────────
 st.set_page_config(page_title="경동나비엔 가스보일러 설치·시공 현황", layout="wide")
 
-# 기본 폰트 등록 시도 (같은 폴더에 NanumGothic.ttf 있으면 한글 정상표시)
 FONT_NAME = "NanumGothic"
 try:
     pdfmetrics.registerFont(TTFont(FONT_NAME, "NanumGothic.ttf"))
@@ -43,11 +37,7 @@ styles = {
     ),
 }
 
-# ────────────────────────────────────────────────
-# 유틸
-# ────────────────────────────────────────────────
 def _pick_image(file_uploader, camera_input) -> Image.Image | None:
-    """업로드 우선, 없으면 카메라. 둘 다 없으면 None."""
     if file_uploader is not None:
         return Image.open(file_uploader).convert("RGB")
     if camera_input is not None:
@@ -61,17 +51,15 @@ def _pil_to_bytesio(img: Image.Image, quality=85) -> io.BytesIO:
     return buf
 
 def build_pdf(meta: dict, titled_images: List[Tuple[str, Image.Image | None]]) -> bytes:
-    """메타 정보 + 3x2 이미지 그리드로 단일 페이지 PDF 생성."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
-        buf, pagesize=A4, topMargin=18, bottomMargin=18, leftMargin=18, rightMargin=18,
-        title="경동나비엔 가스보일러 설치·시공 현황",
+        buf, pagesize=A4, topMargin=18, bottomMargin=18,
+        leftMargin=18, rightMargin=18,
+        title="경동나비엔 가스보일러 설치·시공 현황"
     )
-
     story = []
     story.append(Paragraph("경동나비엔 가스보일러 설치·시공 현황", styles["title"]))
 
-    # 메타 테이블
     meta_rows = [
         [Paragraph("현장명", styles["cell"]), Paragraph(meta["site"], styles["cell"])],
         [Paragraph("설치모델", styles["cell"]), Paragraph(meta["model"], styles["cell"])],
@@ -86,62 +74,28 @@ def build_pdf(meta: dict, titled_images: List[Tuple[str, Image.Image | None]]) -
         ("BOX", (0, 0), (-1, -1), 0.75, colors.black),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(meta_tbl)
     story.append(Spacer(1, 6))
 
-    # 이미지 그리드 3x2
     PAGE_W, _ = A4
-    col_width = (PAGE_W - 36 - 36) / 3  # 좌우 마진 고려 후 3등분
+    col_width = (PAGE_W - 36 - 36) / 3
 
-    grid_rows = []
     cells = []
     for title, pil_img in titled_images:
         if pil_img is None:
             cell = Table(
-                [[Paragraph("(사진 없음)", styles["cell"])], [Paragraph(title, styles["cell"])]],
-                style=TableStyle([
-                    ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ]),
+                [[Paragraph("(사진 없음)", styles["cell"])], [Paragraph(title, styles["cell"])]]
             )
         else:
             bio = _pil_to_bytesio(pil_img)
-            rl_img = RLImage(bio, width=col_width - 6)   # preserveAspectRatio 인자 사용 X
+            rl_img = RLImage(bio, width=col_width - 6)  # preserveAspectRatio 인자 사용 X
             rl_img.hAlign = "CENTER"
-            cell = Table(
-                [[rl_img], [Paragraph(title, styles["cell"])]],
-                style=TableStyle([
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ]),
-            )
+            cell = Table([[rl_img], [Paragraph(title, styles["cell"])]] )
         cells.append(cell)
 
-    for i in range(0, 6, 3):
-        grid_rows.append(cells[i:i+3])
-
-    grid_tbl = Table(
-        grid_rows,
-        colWidths=[col_width, col_width, col_width],
-        style=TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.75, colors.black),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])
-    )
+    grid_rows = [cells[0:3], cells[3:6]]
+    grid_tbl = Table(grid_rows, colWidths=[col_width, col_width, col_width])
     story.append(grid_tbl)
 
     doc.build(story)
@@ -153,7 +107,7 @@ def build_pdf(meta: dict, titled_images: List[Tuple[str, Image.Image | None]]) -
 st.markdown("### 경동나비엔 가스보일러 설치·시공 현황")
 st.info("모바일에서는 각 사진 칸에서 '카메라로 촬영' 또는 '앨범에서 선택' 둘 다 가능합니다.")
 
-# 메타정보는 form으로 (키 충돌 방지 위해 새 키 사용)
+# 메타정보는 form으로 (키 충돌 방지 위해 새 키)
 with st.form("meta_form_v2"):
     colA, colB = st.columns(2)
     with colA:
@@ -179,8 +133,7 @@ labels = [
     "6. 추가 사진",
 ]
 
-uploads: list[tuple] = []
-
+uploads = []
 row1 = st.columns(3)
 for i in range(3):
     with row1[i]:
@@ -215,7 +168,6 @@ if submitted:
         "date": str(work_date),
     }
 
-    # 필수값 체크
     missing = []
     for k, v in [
         ("현장명", meta["site"]),
@@ -246,8 +198,8 @@ if submitted:
 with st.expander("도움말 / 안내"):
     st.markdown(
         """
-        - **카메라 촬영이 안 뜨면**: 브라우저 카메라 권한을 허용해 주세요. iOS Safari/Chrome, Android Chrome에서 지원됩니다.
-        - **한글이 깨질 때**: 앱 파일과 같은 폴더에 `NanumGothic.ttf`를 넣어두면 PDF 글자가 정상 표시됩니다.
-        - **한 페이지 유지 팁**: 사진이 너무 크면 자동 리사이즈되지만, 6장을 모두 채울 때는 1~2MB 내외 권장합니다.
+        - **카메라 촬영이 안 뜨면**: 브라우저 카메라 권한을 허용해 주세요.
+        - **한글이 깨질 때**: 같은 폴더에 `NanumGothic.ttf`를 넣어두면 PDF 글자가 정상 표시됩니다.
+        - **사진 파일 크기**: 1~2MB 내외 권장 (자동 리사이즈됨)
         """
     )
